@@ -12,22 +12,35 @@ import os
 # NOTE: However the feeder may not do as intended, so be careful and check the feeder code also
 class HandEmgRecordWriter:
     def __init__(self, filepath, emg_channels):
-        self.filepath = filepath
+        self.original_filepath = filepath
+        self.tmp_filepath = filepath + ".tmp"
         self.emg_channels = emg_channels
-        self.file = open(filepath, "wb")
+        self.file = open(self.tmp_filepath, "wb")
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
+        if exc_type is None:
+            self.save()
+        else:
+            self.cancel()
 
-    def close(self):
+    def save(self):
         if self.file:
             self.file.flush()
             os.fsync(self.file.fileno())
             self.file.close()
             self.file = None
+            os.rename(self.tmp_filepath, self.original_filepath)
+
+    def cancel(self):
+        if self.file:
+            self.file.close()
+            self.file = None
+
+        if os.path.exists(self.tmp_filepath):
+            os.remove(self.tmp_filepath)
 
     def add(self, emg, hand_pose):
         if not self.file:
