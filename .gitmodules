@@ -1,6 +1,6 @@
 [submodule "webcam_hand_triangulation"]
-	path = webcam_hand_triangulation
+	path = src/webcam_hand_triangulation
 	url = https://github.com/Senopiece/webcam_hand_triangulation
 [submodule "emg_capture"]
-	path = emg_capture
+	path = src/emg_capture
 	url = https://github.com/Senopiece/emg_capture
