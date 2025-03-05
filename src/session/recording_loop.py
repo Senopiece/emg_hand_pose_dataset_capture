@@ -21,6 +21,8 @@ def recording_loop(
     writer = None
     ask_whether_to_save_record: None | BoolPromise = None
 
+    record_toggle.request_toggle()
+
     while True:
         try:
             hand_points: List[np.ndarray]
