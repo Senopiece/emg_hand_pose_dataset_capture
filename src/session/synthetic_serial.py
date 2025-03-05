@@ -17,15 +17,15 @@ class SyntheticSerial:
         self.worker_thread.start()
 
     def _worker(self):
-        """Worker thread that adds 100 packets each 0.05 second to the buffer (so that the rate 2000 packets per second)."""
+        """Worker thread that adds 50 packets each 0.025 second to the buffer (so that the rate 2000 packets per second)."""
         while self.running:
             start_time = time.time()  # Track the start time of the 1-second period
 
             # Generate a synthetic packet with incrementing values
             packets = bytearray()
-            for _ in range(100):
+            for _ in range(50):
                 for channel in range(self.channels):
-                    value = (self.current_count + channel * 100) % 4096
+                    value = (self.current_count + channel * 50) % 4096
                     packets += value.to_bytes(2, byteorder="little")
                 packets += b"\xFF\xFF"  # Delimiter
                 self.current_count += 1
@@ -36,7 +36,7 @@ class SyntheticSerial:
 
             # Calculate the remaining time to sleep to maintain the 1-second period
             elapsed_time = time.time() - start_time
-            sleep_time = 0.05 - elapsed_time
+            sleep_time = 0.025 - elapsed_time
 
             if sleep_time > 0:
                 time.sleep(sleep_time)  # Sleep for the remaining time
