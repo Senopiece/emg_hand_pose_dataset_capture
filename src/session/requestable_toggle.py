@@ -10,7 +10,7 @@ class RequestableToggle:
     def request_toggle(self):
         """Marks a toggle request. Implicitly resets toggle."""
         with self._lock:
-            self._toggle_requested.value = True
+            self._toggle_requested.value = True        
 
     def toggle(self):
         """Completes the toggle request."""

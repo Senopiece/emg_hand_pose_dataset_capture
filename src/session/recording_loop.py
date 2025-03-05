@@ -1,8 +1,9 @@
+from multiprocessing.managers import SyncManager
+from multiprocessing.sharedctypes import Synchronized
 import os
 from typing import List
 import numpy as np
 from .hand_emg_record import HandEmgRecordWriter
-from .bool_promise import BoolPromise
 from .requestable_toggle import RequestableToggle
 from webcam_hand_triangulation.capture.coupling_loop import FinalizableQueue
 from webcam_hand_triangulation.capture.finalizable_queue import EmptyFinalized
@@ -10,6 +11,7 @@ from webcam_hand_triangulation.capture.finalizable_queue import EmptyFinalized
 
 def recording_loop(
     record_toggle: RequestableToggle,
+    manager: SyncManager,
     save_record_question_channel: FinalizableQueue,
     base_dir: str,
     num_channels: int,
@@ -19,7 +21,7 @@ def recording_loop(
 ):
     record_id = 0
     writer = None
-    ask_whether_to_save_record: None | BoolPromise = None
+    ask_whether_to_save_record: None | Synchronized = None
 
     record_toggle.request_toggle()
 
@@ -40,9 +42,9 @@ def recording_loop(
 
         if ask_whether_to_save_record is not None:
             assert writer is not None
-            should_save = ask_whether_to_save_record.get()
+            should_save = ask_whether_to_save_record.value
 
-            if should_save is None:
+            if should_save == -1:
                 pass # skip if not yet decided
             else:
                 if should_save:
@@ -61,7 +63,7 @@ def recording_loop(
                 )
                 record_toggle.request_toggle()
         elif writer is not None and ask_whether_to_save_record is None:
-            ask_whether_to_save_record = BoolPromise()
+            ask_whether_to_save_record = manager.Value("b", -1)
             save_record_question_channel.put(ask_whether_to_save_record)
 
         if writer is not None and ask_whether_to_save_record is None:
@@ -69,6 +71,8 @@ def recording_loop(
                 writer.cancel()
                 writer = None
                 print("No hand detected. Record canceled.")
+                record_toggle.request_toggle()
+                record_toggle.toggle()
                 record_toggle.request_toggle()
             else:
                 writer.add(signal_chunk, hand_points)

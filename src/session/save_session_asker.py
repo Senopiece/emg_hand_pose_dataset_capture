@@ -26,4 +26,4 @@ def confirmation_loop(
 
         # Display a popup asking the user whether to save the record
         save_record = ask_user_to_save()
-        promise.set(save_record)
+        promise.value = int(save_record)

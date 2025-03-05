@@ -87,206 +87,208 @@ def main(
     ###                                     Pipeline                                       ###
     ##########################################################################################
 
-    cameras_ids = list(cameras_params.keys())
+    with multiprocessing.Manager() as manager:
+        cameras_ids = list(cameras_params.keys())
 
-    # Shared
-    cams_stop_event = multiprocessing.Event()
-    last_frame: List[Wrapped[Tuple[np.ndarray, int] | None]] = [
-        Wrapped() for _ in cameras_ids
-    ]
+        # Shared
+        cams_stop_event = multiprocessing.Event()
+        last_frame: List[Wrapped[Tuple[np.ndarray, int] | None]] = [
+            Wrapped() for _ in cameras_ids
+        ]
 
-    # Capture cameras
-    caps: List[threading.Thread] = [
-        threading.Thread(
-            target=cap_reading,
+        # Capture cameras
+        caps: List[threading.Thread] = [
+            threading.Thread(
+                target=cap_reading,
+                args=(
+                    idx,
+                    cams_stop_event,
+                    my_last_frame,
+                    cam_param,
+                ),
+                daemon=True,
+            )
+            for my_last_frame, (idx, cam_param) in zip(last_frame, cameras_params.items())
+        ]
+        for process in caps:
+            process.start()
+
+        # Couple frames and emg
+        emg_frames_queue = ThreadFinalizableQueue()
+        coupling_worker = threading.Thread(
+            target=emg_coupling_loop,
             args=(
-                idx,
+                2,
+                channels_num,
+                serial_port,
+                couple_fps,
                 cams_stop_event,
-                my_last_frame,
-                cam_param,
-            ),
-            daemon=True,
-        )
-        for my_last_frame, (idx, cam_param) in zip(last_frame, cameras_params.items())
-    ]
-    for process in caps:
-        process.start()
-
-    # Couple frames and emg
-    emg_frames_queue = ThreadFinalizableQueue()
-    coupling_worker = threading.Thread(
-        target=emg_coupling_loop,
-        args=(
-            2,
-            channels_num,
-            serial_port,
-            couple_fps,
-            cams_stop_event,
-            last_frame,
-            emg_frames_queue,
-        ),
-        daemon=True,
-    )
-    coupling_worker.start()
-
-    # Processing workers
-    processing_results = ThreadFinalizableQueue()
-    processed_queues = [ThreadFinalizableQueue() for _ in cameras_ids]
-    processing_loops_pool = [
-        threading.Thread(
-            target=processing_loop,
-            args=(
-                [landmark_transforms[cp.track] for cp in cameras_params.values()],
-                draw_origin_landmarks,
-                desired_window_size,
-                list(cameras_params.values()),
+                last_frame,
                 emg_frames_queue,
-                processing_results,
-                processed_queues,
             ),
             daemon=True,
         )
-        for _ in range(triangulation_workers_num)
-    ]
-    for process in processing_loops_pool:
-        process.start()
+        coupling_worker.start()
 
-    # Sort processing results
-    ordered_processing_results = ThreadFinalizableQueue()
-    results_sorter = threading.Thread(
-        target=ordering_loop,
-        args=(
-            processing_results,
-            ordered_processing_results,
-        ),
-        daemon=True,
-    )
-    results_sorter.start()
+        # Processing workers
+        processing_results = ThreadFinalizableQueue()
+        processed_queues = [ThreadFinalizableQueue() for _ in cameras_ids]
+        processing_loops_pool = [
+            threading.Thread(
+                target=processing_loop,
+                args=(
+                    [landmark_transforms[cp.track] for cp in cameras_params.values()],
+                    draw_origin_landmarks,
+                    desired_window_size,
+                    list(cameras_params.values()),
+                    emg_frames_queue,
+                    processing_results,
+                    processed_queues,
+                ),
+                daemon=True,
+            )
+            for _ in range(triangulation_workers_num)
+        ]
+        for process in processing_loops_pool:
+            process.start()
 
-    # Record and decouple
-    record_toggle = RequestableToggle()
-    save_record_question_channel = ProcessFinalizableQueue()
-    hand_points_queue = ProcessFinalizableQueue()
-    signal_chunks_queue = ProcessFinalizableQueue()
-    recorder = threading.Thread(
-        target=recording_loop,
-        args=(
-            record_toggle,
-            save_record_question_channel,
-            curr_session_folder,
-            channels_num,
-            ordered_processing_results,
-            hand_points_queue,
-            signal_chunks_queue,
-        ),
-        daemon=True,
-    )
-    recorder.start()
-
-    # Visualize signal
-    signal_visualizer = multiprocessing.Process(
-        target=signal_window_loop,
-        args=(
-            "EMG",
-            channels_num,
-            0,
-            4096,
-            cams_stop_event,
-            signal_chunks_queue,
-            record_toggle,
-        ),
-        daemon=True,
-    )
-    signal_visualizer.start()
-
-    # Visualize 3d hand
-    hand_3d_visualizer = multiprocessing.Process(
-        target=hand_3d_visualization_loop,
-        args=(
-            desired_window_size,
-            cams_stop_event,
-            hand_points_queue,
-        ),
-        daemon=True,
-    )
-    hand_3d_visualizer.start()
-
-    # A save asking worker
-    confirmator = multiprocessing.Process(
-        target=confirmation_loop,
-        args=(save_record_question_channel,),
-        daemon=True,
-    )
-    confirmator.start()
-
-    # Sort processing workers output
-    ordered_processed_queues = [ProcessFinalizableQueue() for _ in cameras_ids]
-    display_ordering_loops = [
-        threading.Thread(
+        # Sort processing results
+        ordered_processing_results = ThreadFinalizableQueue()
+        results_sorter = threading.Thread(
             target=ordering_loop,
             args=(
-                in_queue,
-                out_queue,
+                processing_results,
+                ordered_processing_results,
             ),
             daemon=True,
         )
-        for in_queue, out_queue in zip(processed_queues, ordered_processed_queues)
-    ]
-    for process in display_ordering_loops:
-        process.start()
+        results_sorter.start()
 
-    # Displaying loops
-    display_loops = [
-        multiprocessing.Process(
-            target=display_loop,
+        # Record and decouple
+        record_toggle = RequestableToggle()
+        save_record_question_channel = ProcessFinalizableQueue()
+        hand_points_queue = ProcessFinalizableQueue()
+        signal_chunks_queue = ProcessFinalizableQueue()
+        recorder = threading.Thread(
+            target=recording_loop,
             args=(
-                idx,
-                cams_stop_event,
-                frame_queue,
+                record_toggle,
+                manager,
+                save_record_question_channel,
+                curr_session_folder,
+                channels_num,
+                ordered_processing_results,
+                hand_points_queue,
+                signal_chunks_queue,
             ),
             daemon=True,
         )
-        for idx, frame_queue in zip(cameras_ids, ordered_processed_queues)
-    ]
-    for process in display_loops:
-        process.start()
+        recorder.start()
 
-    # Wait for a stop signal
-    cams_stop_event.wait()
+        # Visualize signal
+        signal_visualizer = multiprocessing.Process(
+            target=signal_window_loop,
+            args=(
+                "EMG",
+                channels_num,
+                0,
+                4096,
+                cams_stop_event,
+                signal_chunks_queue,
+                record_toggle,
+            ),
+            daemon=True,
+        )
+        signal_visualizer.start()
 
-    # Free resources
-    print("Freeing resources...")
-    coupling_worker.join()
+        # Visualize 3d hand
+        hand_3d_visualizer = multiprocessing.Process(
+            target=hand_3d_visualization_loop,
+            args=(
+                desired_window_size,
+                cams_stop_event,
+                hand_points_queue,
+            ),
+            daemon=True,
+        )
+        hand_3d_visualizer.start()
 
-    for worker in caps:
-        worker.join()
+        # A save asking worker
+        confirmator = multiprocessing.Process(
+            target=confirmation_loop,
+            args=(save_record_question_channel,),
+            daemon=True,
+        )
+        confirmator.start()
 
-    coupling_worker.join()
+        # Sort processing workers output
+        ordered_processed_queues = [ProcessFinalizableQueue() for _ in cameras_ids]
+        display_ordering_loops = [
+            threading.Thread(
+                target=ordering_loop,
+                args=(
+                    in_queue,
+                    out_queue,
+                ),
+                daemon=True,
+            )
+            for in_queue, out_queue in zip(processed_queues, ordered_processed_queues)
+        ]
+        for process in display_ordering_loops:
+            process.start()
 
-    for worker in processing_loops_pool:
-        worker.join()
+        # Displaying loops
+        display_loops = [
+            multiprocessing.Process(
+                target=display_loop,
+                args=(
+                    idx,
+                    cams_stop_event,
+                    frame_queue,
+                ),
+                daemon=True,
+            )
+            for idx, frame_queue in zip(cameras_ids, ordered_processed_queues)
+        ]
+        for process in display_loops:
+            process.start()
 
-    processing_results.finalize()
-    for queue in processed_queues:
-        queue.finalize()
+        # Wait for a stop signal
+        cams_stop_event.wait()
 
-    results_sorter.join()
-    for worker in display_ordering_loops:
-        worker.join()
+        # Free resources
+        print("Freeing resources...")
+        coupling_worker.join()
 
-    recorder.join()
-    hand_points_queue.finalize()
-    signal_chunks_queue.finalize()
-    save_record_question_channel.finalize()
+        for worker in caps:
+            worker.join()
 
-    signal_visualizer.join()
-    confirmator.join()
+        coupling_worker.join()
 
-    hand_3d_visualizer.join()
-    for worker in display_loops:
-        worker.join()
+        for worker in processing_loops_pool:
+            worker.join()
 
-    cv2.destroyAllWindows()
+        processing_results.finalize()
+        for queue in processed_queues:
+            queue.finalize()
+
+        results_sorter.join()
+        for worker in display_ordering_loops:
+            worker.join()
+
+        recorder.join()
+        hand_points_queue.finalize()
+        signal_chunks_queue.finalize()
+        save_record_question_channel.finalize()
+
+        signal_visualizer.join()
+        confirmator.join()
+
+        hand_3d_visualizer.join()
+        for worker in display_loops:
+            worker.join()
+
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
