@@ -68,7 +68,7 @@ def emg_coupling_loop(
 
             # Rate-limit to ~couple_fps FPS
             elapsed_time = time.time() - start_time
-            if elapsed_time > target_frame_interval:
+            if elapsed_time < target_frame_interval:
                 time.sleep(target_frame_interval - elapsed_time)
 
         coupled_emg_frames_queue.finalize()
