@@ -6,4 +6,5 @@ python -m calibrate
 python -m capture
 
 set PYTHONPATH=C:\Users\shich\Src\thesis\emg_hand_pose_dataset_capture\src
+export PYTHONPATH=C:/Users/shich/Src/thesis/emg_hand_pose_dataset_capture/src
 python -m session -d datasets/dataset1 -p synthetic
