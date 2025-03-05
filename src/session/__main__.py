@@ -187,7 +187,7 @@ def main(
     signal_visualizer = multiprocessing.Process(
         target=signal_window_loop,
         args=(
-            "Signal",
+            "EMG",
             channels_num,
             0,
             4096,
