@@ -83,17 +83,24 @@ def signal_window_loop(
         button = Button(ax_button, f"Ch {i}", color=colors[i % len(colors)])
         button.on_clicked(lambda event, i=i: toggle_channel(i))
         buttons.append(button)
+    
+    def fill_data(signal_chunk):
+        nonlocal data
+        for sample in signal_chunk:
+            for i in range(channels_num):
+                data[i].append(sample[i])
 
     while True:
         try:
-            # Drain signal fully
-            for _ in range(signal_queue.qsize()):
+            if signal_queue.qsize() == 0:
                 signal_chunk = signal_queue.get()
-
-                # Populate queue with the chunk data
-                for sample in signal_chunk:
-                    for i in range(channels_num):
-                        data[i].append(sample[i])
+                fill_data(signal_chunk)
+                signal_queue.task_done()
+            else:
+                for _ in range(signal_queue.qsize()):
+                    signal_chunk = signal_queue.get()
+                    fill_data(signal_chunk)
+                    signal_queue.task_done()
         except EmptyFinalized:
             break
 
@@ -107,6 +114,5 @@ def signal_window_loop(
         fig.canvas.draw_idle()
         plt.pause(0.01)  # Allow matplotlib to process GUI events
 
-        signal_queue.task_done()
-
+    plt.close(fig)
     print("Plot window closed.")
