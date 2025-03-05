@@ -11,9 +11,9 @@ from webcam_hand_triangulation.capture.display_loop import display_loop
 from webcam_hand_triangulation.capture.hand_3d_visualization_loop import (
     hand_3d_visualization_loop,
 )
+from webcam_hand_triangulation.capture.high_priority import set_high_priority
 from webcam_hand_triangulation.capture.landmark_transforms import landmark_transforms
 from webcam_hand_triangulation.capture.cap_reading_loop import cap_reading
-from webcam_hand_triangulation.capture.coupling_loop import coupling_loop
 from webcam_hand_triangulation.capture.finalizable_queue import (
     ProcessFinalizableQueue,
     ThreadFinalizableQueue,
@@ -44,6 +44,8 @@ def main(
     serial_port: str,
     channels_num: int,
 ):
+    set_high_priority()
+
     # Check camera parameters
     if len(cameras_params) < 2:
         print("Need at least two cameras with calibration data.")
@@ -242,7 +244,7 @@ def main(
             ),
             daemon=True,
         )
-        for idx, frame_queue in zip(cameras_ids, processed_queues)
+        for idx, frame_queue in zip(cameras_ids, ordered_processed_queues)
     ]
     for process in display_loops:
         process.start()
