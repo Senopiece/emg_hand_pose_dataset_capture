@@ -35,6 +35,7 @@ def recording_loop(
         except EmptyFinalized:
             if writer is not None:
                 writer.cancel()
+                print("Force shutdown while recording. Record canceled.")
             break
 
         if ask_whether_to_save_record is not None:
@@ -66,7 +67,13 @@ def recording_loop(
                 record_toggle.reset_toggle()
 
         if writer is not None and ask_whether_to_save_record is None:
-            writer.add(signal_chunk, hand_points)
+            if len(hand_points) == 0:
+                writer.cancel()
+                writer = None
+                print("No hand detected. Record canceled.")
+                record_toggle.request_toggle()
+            else:
+                writer.add(signal_chunk, hand_points)
 
         signal_fwd.put((signal_chunk))
         hand_points_fwd.put((hand_points, coupling_fps, debt_size))
