@@ -43,7 +43,7 @@ def recording_loop(
             should_save = ask_whether_to_save_record.get()
 
             if should_save is None:
-                pass
+                pass # skip if not yet decided
             else:
                 if should_save:
                     writer.save()
@@ -55,16 +55,15 @@ def recording_loop(
                 record_toggle.request_toggle()
 
         if record_toggle.is_toggled():
-            assert ask_whether_to_save_record is None
             if writer is None:
                 writer = HandEmgRecordWriter(
                     os.path.join(base_dir, f"{record_id}.bin"), num_channels
                 )
                 record_toggle.request_toggle()
-            elif writer is not None:
-                ask_whether_to_save_record = BoolPromise()
-                save_record_question_channel.put(ask_whether_to_save_record)
-                record_toggle.reset_toggle()
+        elif writer is not None:
+            assert ask_whether_to_save_record is None
+            ask_whether_to_save_record = BoolPromise()
+            save_record_question_channel.put(ask_whether_to_save_record)
 
         if writer is not None and ask_whether_to_save_record is None:
             if len(hand_points) == 0:
