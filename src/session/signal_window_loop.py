@@ -48,13 +48,12 @@ def signal_window_loop(
 
     def update_rec_button():
         if record_toggle.toggle_requested():
-            ax_rec.set_facecolor("red" if record_toggle.is_toggled() else "green")
+            rec_button.color = "red" if record_toggle.is_toggled() else "green"
         else:
-            ax_rec.set_facecolor("gray")
+            rec_button.color = "gray"
 
     def on_rec_clicked(_):
         record_toggle.toggle()
-        update_rec_button()
 
     rec_button.on_clicked(on_rec_clicked)
 
