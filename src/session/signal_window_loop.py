@@ -86,14 +86,16 @@ def signal_window_loop(
 
     while True:
         try:
-            signal_chunk = signal_queue.get()
+            # Drain signal fully
+            for _ in range(signal_queue.qsize()):
+                signal_chunk = signal_queue.get()
+
+                # Populate queue with the chunk data
+                for sample in signal_chunk:
+                    for i in range(channels_num):
+                        data[i].append(sample[i])
         except EmptyFinalized:
             break
-
-        # Populate queue with the chunk data
-        for sample in signal_chunk:
-            for i in range(channels_num):
-                data[i].append(sample[i])
 
         # Update each channel's plot line
         for i, line in enumerate(lines):
@@ -103,7 +105,7 @@ def signal_window_loop(
 
         # Redraw the plot
         fig.canvas.draw_idle()
-        plt.pause(0.03)  # Allow matplotlib to process GUI events
+        plt.pause(0.01)  # Allow matplotlib to process GUI events
 
         signal_queue.task_done()
 
