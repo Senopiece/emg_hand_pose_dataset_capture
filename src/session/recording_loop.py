@@ -60,8 +60,7 @@ def recording_loop(
                     os.path.join(base_dir, f"{record_id}.bin"), num_channels
                 )
                 record_toggle.request_toggle()
-        elif writer is not None:
-            assert ask_whether_to_save_record is None
+        elif writer is not None and ask_whether_to_save_record is None:
             ask_whether_to_save_record = BoolPromise()
             save_record_question_channel.put(ask_whether_to_save_record)
 
