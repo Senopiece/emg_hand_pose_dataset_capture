@@ -4,8 +4,10 @@ import os
 import sys
 import threading
 from typing import Dict, List, Tuple
-import cv2
 import numpy as np
+
+os.environ["OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS"] = "0"
+import cv2
 
 from webcam_hand_triangulation.capture.display_loop import display_loop
 from webcam_hand_triangulation.capture.hand_3d_visualization_loop import (
