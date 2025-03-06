@@ -9,6 +9,8 @@ from webcam_hand_triangulation.capture.finalizable_queue import (
     FinalizableQueue,
 )
 
+from .position_loader import load_position, save_position
+
 
 def signal_window_loop(
     title: str,
@@ -66,6 +68,11 @@ def signal_window_loop(
         button.on_clicked(lambda event, i=i: toggle_channel(i))
         buttons.append(button)
     
+    POSITION_CONFIG = "signal_window_pos"
+    manager = plt.get_current_fig_manager()
+    x, y = load_position(POSITION_CONFIG)
+    manager.window.geometry(f"+{x}+{y}")
+    
     def fill_data(signal_chunk):
         nonlocal data
         for sample in signal_chunk:
@@ -73,6 +80,14 @@ def signal_window_loop(
                 data[i].append(sample[i])
 
     while True:
+        try:
+            # track latest x, y
+            geom = manager.window.geometry()
+            pos = geom.split("+")[1:]  # Extract x and y
+            x, y = int(pos[0]), int(pos[1])
+        except:
+            pass
+
         try:
             if signal_queue.qsize() == 0:
                 signal_chunk = signal_queue.get()
@@ -84,7 +99,9 @@ def signal_window_loop(
                     fill_data(signal_chunk)
                     signal_queue.task_done()
         except EmptyFinalized:
+            save_position(POSITION_CONFIG, x, y)
             break
+
 
         # Update each channel's plot line
         for i, line in enumerate(lines):

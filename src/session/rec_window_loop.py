@@ -1,9 +1,12 @@
 from multiprocessing import synchronize
+import tkinter as tk
+from tkinter import ttk
+
 from webcam_hand_triangulation.capture.finalizable_queue import (
     FinalizableQueue,
 )
-import tkinter as tk
-from tkinter import ttk
+
+from .position_loader import load_position, save_position
 
 def rec_window_loop(
     stop_event: synchronize.Event,
@@ -32,6 +35,7 @@ def rec_window_loop(
     def updtodate_channel():
         nonlocal last_command
         if command_channel.qsize() == 0 and command_channel.is_finalized():
+            save_position(POSITION_CONFIG, root.winfo_x(), root.winfo_y())
             root.destroy()
             return
         
@@ -72,6 +76,10 @@ def rec_window_loop(
     def on_cancel():
         if hasattr(last_command, "value"):
             last_command.value = 0
+    
+    POSITION_CONFIG = "rec_window_pos"
+    x, y = load_position(POSITION_CONFIG)
+    root.geometry(f"+{x}+{y}")
     
     updtodate_channel()
     root.protocol("WM_DELETE_WINDOW", lambda: stop_event.set())
