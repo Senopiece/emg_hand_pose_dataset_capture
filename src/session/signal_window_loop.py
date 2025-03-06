@@ -4,7 +4,6 @@ import multiprocessing.synchronize
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 
-from .requestable_toggle import RequestableToggle
 from webcam_hand_triangulation.capture.finalizable_queue import (
     EmptyFinalized,
     FinalizableQueue,
@@ -18,7 +17,6 @@ def signal_window_loop(
     ymax: float,
     stop_event: multiprocessing.synchronize.Event,
     signal_queue: FinalizableQueue,
-    record_toggle: RequestableToggle,
 ):
     # Create a deque for each channel to store the last N records
     dmaxlen = 10000  # Define the maximum length of the deque
@@ -41,21 +39,6 @@ def signal_window_loop(
 
     # Connect the close event handler
     fig.canvas.mpl_connect("close_event", on_close)
-
-    # Add the REC button
-    ax_rec = plt.axes((0.85, 0.05, 0.1, 0.05))
-    rec_button = Button(ax_rec, "REC")
-
-    def update_rec_button():
-        if record_toggle.toggle_requested():
-            rec_button.color = "red" if record_toggle.is_toggled() else "green"
-        else:
-            rec_button.color = "gray"
-
-    def on_rec_clicked(_):
-        record_toggle.toggle()
-
-    rec_button.on_clicked(on_rec_clicked)
 
     # Create buttons for each channel and place them in the top-right corner
     buttons = []
@@ -106,8 +89,6 @@ def signal_window_loop(
         # Update each channel's plot line
         for i, line in enumerate(lines):
             line.set_ydata(data[i])
-
-        update_rec_button()
 
         # Redraw the plot
         fig.canvas.draw_idle()

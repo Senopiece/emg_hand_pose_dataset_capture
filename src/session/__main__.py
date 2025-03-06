@@ -25,9 +25,8 @@ from webcam_hand_triangulation.capture.wrapped import Wrapped
 from webcam_hand_triangulation.capture.models import CameraParams
 from webcam_hand_triangulation.capture.cam_conf import load_cameras_parameters
 
-from .save_session_asker import confirmation_loop
+from .rec_window_loop import rec_window_loop
 from .signal_window_loop import signal_window_loop
-from .requestable_toggle import RequestableToggle
 from .recording_loop import recording_loop
 from .processing_loop import processing_loop
 from .emg_couple_loop import emg_coupling_loop
@@ -165,16 +164,14 @@ def main(
         results_sorter.start()
 
         # Record and decouple
-        record_toggle = RequestableToggle()
-        save_record_question_channel = ProcessFinalizableQueue()
+        record_control_channel = ProcessFinalizableQueue()
         hand_points_queue = ProcessFinalizableQueue()
         signal_chunks_queue = ProcessFinalizableQueue()
         recorder = threading.Thread(
             target=recording_loop,
             args=(
-                record_toggle,
                 manager,
-                save_record_question_channel,
+                record_control_channel,
                 curr_session_folder,
                 channels_num,
                 ordered_processing_results,
@@ -195,7 +192,6 @@ def main(
                 4096,
                 cams_stop_event,
                 signal_chunks_queue,
-                record_toggle,
             ),
             daemon=True,
         )
@@ -214,12 +210,15 @@ def main(
         hand_3d_visualizer.start()
 
         # A save asking worker
-        confirmator = multiprocessing.Process(
-            target=confirmation_loop,
-            args=(save_record_question_channel,),
+        rec_window = multiprocessing.Process(
+            target=rec_window_loop,
+            args=(
+                cams_stop_event,
+                record_control_channel,
+            ),
             daemon=True,
         )
-        confirmator.start()
+        rec_window.start()
 
         # Sort processing workers output
         ordered_processed_queues = [ProcessFinalizableQueue() for _ in cameras_ids]
@@ -279,10 +278,10 @@ def main(
         recorder.join()
         hand_points_queue.finalize()
         signal_chunks_queue.finalize()
-        save_record_question_channel.finalize()
+        record_control_channel.finalize()
 
         signal_visualizer.join()
-        confirmator.join()
+        rec_window.join()
 
         hand_3d_visualizer.join()
         for worker in display_loops:
