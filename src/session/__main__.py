@@ -33,8 +33,8 @@ from .emg_couple_loop import emg_coupling_loop
 
 
 def main(
-    # dataset
-    dataset_path: str,
+    # datasets
+    datasets_path: str,
     # triangulation
     cameras_params: Dict[int, CameraParams],
     couple_fps: int,
@@ -53,34 +53,28 @@ def main(
         return
 
     # Ensure the dataset path exists
-    if not os.path.exists(dataset_path):
+    if not os.path.exists(datasets_path):
         create = (
             input(
-                f"The dataset path '{dataset_path}' does not exist. Do you want to create it? (y/n): "
+                f"The dataset path '{datasets_path}' does not exist. Do you want to create it? (y/n): "
             )
             .strip()
             .lower()
         )
         if create == "y":
-            os.makedirs(dataset_path)
+            os.makedirs(datasets_path)
         else:
             print("Dataset path creation declined. Exiting.")
             return 1
 
-    # Define the sessions folder path
-    sessions_folder = os.path.join(dataset_path, "sessions")
-    if not os.path.exists(sessions_folder):
-        os.makedirs(sessions_folder)
+    # Count the number of files in the datasets folder
+    curr_dataset_id = len(os.listdir(datasets_path))
 
-    # Count the number of files in the sessions folder
-    curr_session_id = len(os.listdir(sessions_folder))
-
-    # Define the current session folder path
-    curr_session_folder = os.path.join(sessions_folder, str(curr_session_id))
-    if os.path.exists(curr_session_folder):
-        print(f"{os.path.normpath(curr_session_folder)} already exists.")
+    # Define the current dataset file path
+    curr_dataset_filepath = os.path.join(datasets_path, str(curr_dataset_id) + ".zip")
+    if os.path.exists(curr_dataset_filepath):
+        print(f"{os.path.normpath(curr_dataset_filepath)} already exists.")
         return 1
-    os.makedirs(curr_session_folder)
 
     ##########################################################################################
     ###                                     Pipeline                                       ###
@@ -107,7 +101,9 @@ def main(
                 ),
                 daemon=True,
             )
-            for my_last_frame, (idx, cam_param) in zip(last_frame, cameras_params.items())
+            for my_last_frame, (idx, cam_param) in zip(
+                last_frame, cameras_params.items()
+            )
         ]
         for process in caps:
             process.start()
@@ -119,8 +115,8 @@ def main(
             args=(
                 2,
                 channels_num,
+                12,
                 serial_port,
-                couple_fps,
                 cams_stop_event,
                 last_frame,
                 emg_frames_queue,
@@ -165,17 +161,16 @@ def main(
 
         # Record and decouple
         record_control_channel = ProcessFinalizableQueue()
-        hand_points_queue = ProcessFinalizableQueue()
+        hand_angles_queue = ProcessFinalizableQueue()
         signal_chunks_queue = ProcessFinalizableQueue()
         recorder = threading.Thread(
             target=recording_loop,
             args=(
                 manager,
                 record_control_channel,
-                curr_session_folder,
-                channels_num,
+                curr_dataset_filepath,
                 ordered_processing_results,
-                hand_points_queue,
+                hand_angles_queue,
                 signal_chunks_queue,
             ),
             daemon=True,
@@ -188,8 +183,6 @@ def main(
             args=(
                 "EMG",
                 channels_num,
-                0,
-                4096,
                 cams_stop_event,
                 signal_chunks_queue,
             ),
@@ -203,7 +196,7 @@ def main(
             args=(
                 desired_window_size,
                 cams_stop_event,
-                hand_points_queue,
+                hand_angles_queue,
             ),
             daemon=True,
         )
@@ -276,7 +269,7 @@ def main(
             worker.join()
 
         recorder.join()
-        hand_points_queue.finalize()
+        hand_angles_queue.finalize()
         signal_chunks_queue.finalize()
         record_control_channel.finalize()
 
@@ -294,10 +287,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Capture a dataset session")
     parser.add_argument(
         "-d",
-        "--dataset_path",
+        "--datasets_path",
         type=str,
-        help="Path the dataset path to store to",
-        required=True,
+        default="datasets",
+        help="Path to where to append datasets",
     )
     parser.add_argument(
         "--channels",
@@ -349,7 +342,7 @@ if __name__ == "__main__":
 
     sys.exit(
         main(
-            dataset_path=args.dataset_path,
+            datasets_path=args.datasets_path,
             cameras_params=load_cameras_parameters(args.cfile),
             desired_window_size=desired_window_size,
             triangulation_workers_num=args.workers,

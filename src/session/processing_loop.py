@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from typing import Any, Callable, List, Tuple
+from src.webcam_hand_triangulation.capture.hand_utils import rm_th_base
 from webcam_hand_triangulation.capture.draw_utils import (
     draw_left_top,
     draw_origin_landmarks,
@@ -10,10 +11,11 @@ from webcam_hand_triangulation.capture.finalizable_queue import (
     EmptyFinalized,
     FinalizableQueue,
 )
-from webcam_hand_triangulation.capture.hand_normalization import normalize_hand
 from webcam_hand_triangulation.capture.models import CameraParams
 from webcam_hand_triangulation.capture.processing_loop import (
     HandTriangulator,
+    inverse_hand_angles_by_landmarks,
+    normalize_hand,
 )
 
 
@@ -37,7 +39,7 @@ def processing_loop(
         index: int = elem[0]
         indexed_frames: List[Tuple[np.ndarray, int]] = elem[1]
         coupling_fps: int = elem[2]
-        signal_chunk: List[List[int]] = elem[3]
+        signal_chunk: np.ndarray = elem[3]
 
         cap_fps: List[int] = [item[1] for item in indexed_frames]
         frames: List[np.ndarray] = [item[0] for item in indexed_frames]
@@ -50,10 +52,15 @@ def processing_loop(
             (
                 index,
                 (
-                    normalize_hand(points_3d) if points_3d else [],
+                    (
+                        inverse_hand_angles_by_landmarks(
+                            normalize_hand(rm_th_base(points_3d))
+                        ).astype(np.float32)
+                        if points_3d
+                        else None
+                    ),
                     signal_chunk,
                     coupling_fps,
-                    coupled_emg_frames_queue.qsize(),
                 ),
             )
         )

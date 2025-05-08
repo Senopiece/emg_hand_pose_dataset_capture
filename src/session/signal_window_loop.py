@@ -3,6 +3,7 @@ import multiprocessing
 import multiprocessing.synchronize
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
+import numpy as np
 
 from webcam_hand_triangulation.capture.finalizable_queue import (
     EmptyFinalized,
@@ -15,8 +16,6 @@ from .position_loader import load_position, save_position
 def signal_window_loop(
     title: str,
     channels_num: int,
-    ymin: float,
-    ymax: float,
     stop_event: multiprocessing.synchronize.Event,
     signal_queue: FinalizableQueue,
 ):
@@ -31,7 +30,7 @@ def signal_window_loop(
         ax.plot(data[i], label=f"Channel {i}", color=colors[i % len(colors)])[0]
         for i in range(channels_num)
     ]
-    ax.set_ylim(ymin, ymax)
+    ax.set_ylim(0, 100)
     ax.set_title(f"Real-Time {title} Signal")
     ax.set_xlabel("Sample")
     ax.set_ylabel("Value")
@@ -67,17 +66,17 @@ def signal_window_loop(
         button = Button(ax_button, f"Ch {i}", color=colors[i % len(colors)])
         button.on_clicked(lambda event, i=i: toggle_channel(i))
         buttons.append(button)
-    
+
     POSITION_CONFIG = "signal_window_pos"
     manager = plt.get_current_fig_manager()
     x, y = load_position(POSITION_CONFIG)
     manager.window.geometry(f"+{x}+{y}")
-    
-    def fill_data(signal_chunk):
+
+    def fill_data(signal_chunk: np.ndarray):
         nonlocal data
         for sample in signal_chunk:
             for i in range(channels_num):
-                data[i].append(sample[i])
+                data[i].append(sample[i] * 100)
 
     while True:
         try:
@@ -90,18 +89,17 @@ def signal_window_loop(
 
         try:
             if signal_queue.qsize() == 0:
-                signal_chunk = signal_queue.get()
+                signal_chunk: np.ndarray = signal_queue.get()
                 fill_data(signal_chunk)
                 signal_queue.task_done()
             else:
                 for _ in range(signal_queue.qsize()):
-                    signal_chunk = signal_queue.get()
+                    signal_chunk: np.ndarray = signal_queue.get()
                     fill_data(signal_chunk)
                     signal_queue.task_done()
         except EmptyFinalized:
             save_position(POSITION_CONFIG, x, y)
             break
-
 
         # Update each channel's plot line
         for i, line in enumerate(lines):

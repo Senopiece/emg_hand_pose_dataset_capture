@@ -1,4 +1,5 @@
-from typing import List, Tuple
+from typing import Tuple
+import numpy as np
 import serial
 
 from .synthetic_serial import SyntheticSerial
@@ -8,11 +9,14 @@ class EmgDevice:
     def __init__(
         self,
         bytes_per_channel: int,
+        payload_bits: int,
         channels: int,
         serial_port: str,
+        blocking=False,
     ):
         self.channels = channels
         self.bytes_per_channel = bytes_per_channel
+        self.payload_bits = payload_bits
         self.packet_size = channels * bytes_per_channel
         self.buffer = bytearray()
         if serial_port == "synthetic":
@@ -23,8 +27,8 @@ class EmgDevice:
             # Open real serial connection
             try:
                 self.ser = serial.Serial(
-                    serial_port, 256000, timeout=0
-                )  # Non-blocking read
+                    serial_port, 256000, timeout=None if blocking else 0
+                )
 
                 # Increase serial input buffer size if supported (Windows/Linux only)
                 if hasattr(self.ser, "set_buffer_size"):
@@ -34,23 +38,34 @@ class EmgDevice:
             except Exception as e:
                 raise ValueError(f"Serial connection error: {e}")
 
-    def read_packets(self) -> Tuple[bool, List[List[int]]]:
+    def read_packets(self) -> Tuple[bool, np.ndarray]:
         err = False
         res = []
 
         try:
-            # Read available bytes from the serial buffer
-            incoming = self.ser.read(self.ser.in_waiting or 1)
+            # Read all available bytes from the serial buffer
+            in_waiting = self.ser.in_waiting
+            if in_waiting == 0:
+                # Wait for data
+                incoming = self.ser.read(1)
+
+                # Read the rest
+                in_waiting = self.ser.in_waiting
+                if in_waiting != 0:
+                    incoming += self.ser.read(in_waiting)
+            else:
+                # Read all what avaliable
+                incoming = self.ser.read(in_waiting)
 
             if not incoming:
-                return err, res
+                return err, np.zeros((0, self.channels), dtype=np.float32)
 
             self.buffer.extend(incoming)
 
             # Process packets ending with FFFF
             while True:
                 # Check if FFFF exists in the buffer
-                delimiter_index = self.buffer.find(b"\xFF" * self.bytes_per_channel)
+                delimiter_index = self.buffer.find(b"\xff" * self.bytes_per_channel)
                 if delimiter_index == -1:
                     break  # No complete packet found yet
 
@@ -88,7 +103,19 @@ class EmgDevice:
             print(f"Error while reading packets: {e}")
             err = True  # None to indicate errors
 
-        return err, res
+        if res:
+            # Convert to numpy array
+            res_array = np.array(res, dtype=np.float32)
+
+            # Calculate the maximum value based on bytes_per_channel
+            max_value = (1 << self.payload_bits) - 1
+
+            # Normalize values between 0 and 1
+            res_array = res_array / max_value
+        else:
+            res_array = np.zeros((0, self.channels), dtype=np.float32)
+
+        return err, res_array
 
     def close(self):
         self.ser.close()
