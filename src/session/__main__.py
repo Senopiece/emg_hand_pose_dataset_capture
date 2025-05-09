@@ -37,9 +37,9 @@ def main(
     datasets_path: str,
     # triangulation
     cameras_params: Dict[int, CameraParams],
-    couple_fps: int,
     desired_window_size: Tuple[int, int],
     triangulation_workers_num: int,
+    display_cameras: bool,
     draw_origin_landmarks: bool,
     # emg
     serial_port: str,
@@ -127,7 +127,9 @@ def main(
 
         # Processing workers
         processing_results = ThreadFinalizableQueue()
-        processed_queues = [ThreadFinalizableQueue() for _ in cameras_ids]
+        processed_queues = (
+            [ThreadFinalizableQueue() for _ in cameras_ids] if display_cameras else None
+        )
         processing_loops_pool = [
             threading.Thread(
                 target=processing_loop,
@@ -214,36 +216,43 @@ def main(
         rec_window.start()
 
         # Sort processing workers output
-        ordered_processed_queues = [ProcessFinalizableQueue() for _ in cameras_ids]
-        display_ordering_loops = [
-            threading.Thread(
-                target=ordering_loop,
-                args=(
-                    in_queue,
-                    out_queue,
-                ),
-                daemon=True,
-            )
-            for in_queue, out_queue in zip(processed_queues, ordered_processed_queues)
-        ]
-        for process in display_ordering_loops:
-            process.start()
+        ordered_processed_queues = None
+        display_ordering_loops = None
+        if processed_queues is not None:
+            ordered_processed_queues = [ProcessFinalizableQueue() for _ in cameras_ids]
+            display_ordering_loops = [
+                threading.Thread(
+                    target=ordering_loop,
+                    args=(
+                        in_queue,
+                        out_queue,
+                    ),
+                    daemon=True,
+                )
+                for in_queue, out_queue in zip(
+                    processed_queues, ordered_processed_queues
+                )
+            ]
+            for process in display_ordering_loops:
+                process.start()
 
         # Displaying loops
-        display_loops = [
-            multiprocessing.Process(
-                target=display_loop,
-                args=(
-                    idx,
-                    cams_stop_event,
-                    frame_queue,
-                ),
-                daemon=True,
-            )
-            for idx, frame_queue in zip(cameras_ids, ordered_processed_queues)
-        ]
-        for process in display_loops:
-            process.start()
+        display_loops = None
+        if ordered_processed_queues is not None:
+            display_loops = [
+                multiprocessing.Process(
+                    target=display_loop,
+                    args=(
+                        idx,
+                        cams_stop_event,
+                        frame_queue,
+                    ),
+                    daemon=True,
+                )
+                for idx, frame_queue in zip(cameras_ids, ordered_processed_queues)
+            ]
+            for process in display_loops:
+                process.start()
 
         # Wait for a stop signal
         cams_stop_event.wait()
@@ -261,12 +270,14 @@ def main(
             worker.join()
 
         processing_results.finalize()
-        for queue in processed_queues:
-            queue.finalize()
+        if processed_queues is not None:
+            for queue in processed_queues:
+                queue.finalize()
 
         results_sorter.join()
-        for worker in display_ordering_loops:
-            worker.join()
+        if display_ordering_loops is not None:
+            for worker in display_ordering_loops:
+                worker.join()
 
         recorder.join()
         hand_angles_queue.finalize()
@@ -277,8 +288,9 @@ def main(
         rec_window.join()
 
         hand_3d_visualizer.join()
-        for worker in display_loops:
-            worker.join()
+        if display_loops is not None:
+            for worker in display_loops:
+                worker.join()
 
         cv2.destroyAllWindows()
 
@@ -317,10 +329,10 @@ if __name__ == "__main__":
         help="Size of triangulation workers pool",
     )
     parser.add_argument(
-        "--couple_fps",
-        type=int,
-        default=30,
-        help="Rate at which frames from cameras will be coupled",
+        "-dc",
+        "--display_cameras",
+        help="Preview what cameras are seeing",
+        action="store_true",
     )
     parser.add_argument(
         "-ol", "--origin_landmarks", help="Draw origin landmarks", action="store_true"
@@ -346,7 +358,7 @@ if __name__ == "__main__":
             cameras_params=load_cameras_parameters(args.cfile),
             desired_window_size=desired_window_size,
             triangulation_workers_num=args.workers,
-            couple_fps=args.couple_fps,
+            display_cameras=args.display_cameras,
             draw_origin_landmarks=args.origin_landmarks,
             serial_port=args.port,
             channels_num=args.channels,
