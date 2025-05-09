@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Any
 import numpy as np
 import serial
 
@@ -12,13 +12,16 @@ class EmgDevice:
         payload_bits: int,
         channels: int,
         serial_port: str,
-        blocking=False,
     ):
         self.channels = channels
         self.bytes_per_channel = bytes_per_channel
         self.payload_bits = payload_bits
         self.packet_size = channels * bytes_per_channel
-        self.buffer = bytearray()
+        self.packet_with_delimiter_size = self.packet_size + self.bytes_per_channel
+        self.delimiter_etalon = b"\xff" * self.bytes_per_channel
+        self.max_value = (1 << self.payload_bits) - 1
+        self.dtype = f"<u{self.bytes_per_channel}"  # Little-endian unsigned int
+
         if serial_port == "synthetic":
             # Use synthetic data generator
             self.ser = SyntheticSerial()
@@ -26,9 +29,7 @@ class EmgDevice:
         else:
             # Open real serial connection
             try:
-                self.ser = serial.Serial(
-                    serial_port, 256000, timeout=None if blocking else 0
-                )
+                self.ser = serial.Serial(serial_port, 256000, timeout=None)
 
                 # Increase serial input buffer size if supported (Windows/Linux only)
                 if hasattr(self.ser, "set_buffer_size"):
@@ -38,84 +39,50 @@ class EmgDevice:
             except Exception as e:
                 raise ValueError(f"Serial connection error: {e}")
 
-    def read_packets(self) -> Tuple[bool, np.ndarray]:
-        err = False
-        res = []
+    def position_head(self):
+        # Read a bunch of data that contains a \ff for sure (assuming uncorrupted)
+        incoming = self.ser.read(2 * self.packet_with_delimiter_size)
 
-        try:
-            # Read all available bytes from the serial buffer
-            in_waiting = self.ser.in_waiting
-            if in_waiting == 0:
-                # Wait for data
-                incoming = self.ser.read(1)
+        # get the last packet part
+        delimiter_index = incoming.rfind(self.delimiter_etalon)
+        if delimiter_index == -1:
+            raise ValueError("Corrupted packet")
 
-                # Read the rest
-                in_waiting = self.ser.in_waiting
-                if in_waiting != 0:
-                    incoming += self.ser.read(in_waiting)
-            else:
-                # Read all what avaliable
-                incoming = self.ser.read(in_waiting)
+        # eat up the rest of the packet so that head is at the right position
+        self.ser.read(delimiter_index - self.packet_size)
 
-            if not incoming:
-                return err, np.zeros((0, self.channels), dtype=np.float32)
+    def read_packets(self, amount: int) -> np.ndarray:
+        data = self.ser.read(amount * self.packet_with_delimiter_size)
 
-            self.buffer.extend(incoming)
+        # Split the data into packets and delimiters
+        packets: Any = [None] * amount
+        for i in range(amount):
+            start = i * self.packet_with_delimiter_size
+            end = start + self.packet_with_delimiter_size
+            packet_with_delimiter = data[start:end]
 
-            # Process packets ending with FFFF
-            while True:
-                # Check if FFFF exists in the buffer
-                delimiter_index = self.buffer.find(b"\xff" * self.bytes_per_channel)
-                if delimiter_index == -1:
-                    break  # No complete packet found yet
+            # Check if the delimiter is correct
+            delimiter = packet_with_delimiter[
+                self.packet_size : self.packet_with_delimiter_size
+            ]
+            if delimiter != self.delimiter_etalon:
+                raise ValueError("Malformed packet: Incorrect delimiter")
 
-                # Extract the packet (up to but excluding [0xFF, 0xFF])
-                packet = self.buffer[:delimiter_index]
-                self.buffer = self.buffer[
-                    delimiter_index + 2 :
-                ]  # Remove the packet and delimiter
+            # Extract the packet data
+            packet_data = packet_with_delimiter[: self.packet_size]
 
-                # Process the packet
-                try:
-                    if len(packet) == self.packet_size:
-                        res.append(
-                            [
-                                int.from_bytes(
-                                    packet[
-                                        self.bytes_per_channel
-                                        * i : self.bytes_per_channel
-                                        * (i + 1)
-                                    ],
-                                    byteorder="little",
-                                )
-                                for i in range(self.channels)
-                            ]
-                        )
-                    else:
-                        print(
-                            f"Unexpected packet size: {len(packet)} (expected {self.packet_size}) - {packet}"
-                        )
-                        err = True  # None to indicate errors
-                except Exception as e:
-                    print(f"Packet processing error: {e}")
-                    err = True  # None to indicate errors
-        except Exception as e:
-            print(f"Error while reading packets: {e}")
-            err = True  # None to indicate errors
+            # Parse the packet data into a numpy array
+            packet = np.frombuffer(packet_data, dtype=self.dtype)
 
-        if res:
-            # Convert to numpy array
-            res_array = np.array(res, dtype=np.float32)
+            # Normalize the packet data to [0, 1]
+            packet = packet.astype(np.float32) / self.max_value
 
-            # Calculate the maximum value based on bytes_per_channel
-            max_value = (1 << self.payload_bits) - 1
+            packets[i] = packet
 
-            # Normalize values between 0 and 1
-            res_array = res_array / max_value
-        else:
-            res_array = np.zeros((0, self.channels), dtype=np.float32)
+        # Stack the packets into a single numpy array
+        packets_array = np.vstack(packets)
 
-        return err, res_array
+        return packets_array
 
     def close(self):
         self.ser.close()

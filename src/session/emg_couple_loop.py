@@ -34,47 +34,36 @@ def emg_coupling_loop(
         payload_bits,
         channels,
         serial_port,
-        blocking=True,
     ) as emg_capture:
-        signal_buff = np.ndarray(shape=(0, channels), dtype=np.float32)
+        emg_capture.position_head()
 
         while True:
             if stop_event.is_set():
                 break
 
-            err, signal_chunk = emg_capture.read_packets()
+            try:
+                signal_chunk = emg_capture.read_packets(W)
+            except Exception as e:
+                print(">>> Error reading EMG:", e)
+                continue
 
-            # if signal_chunk.shape[0] != 0:
-            #     # Keep it as low as possible
-            #     # having > 64 is very bad
-            #     print("signal_chunk size: ", signal_chunk.shape[0])
+            frames = []
+            for frame in last_frame:
+                v = frame.get()
+                assert v is not None
+                frame, fps = v
+                frames.append((cv2.flip(frame, 1), fps))
 
-            if err:
-                print(">>> Received a corrupted signal chunk!!")
-
-            signal_buff = np.append(signal_buff, signal_chunk, axis=0)
-
-            while signal_buff.shape[0] > W:
-                signal_chunk = signal_buff[:W]
-                signal_buff = signal_buff[W:]
-
-                frames = []
-                for frame in last_frame:
-                    v = frame.get()
-                    assert v is not None
-                    frame, fps = v
-                    frames.append((cv2.flip(frame, 1), fps))
-
-                # Send coupled postfactum frames + signal
-                coupled_emg_frames_queue.put(
-                    (
-                        index,
-                        frames,
-                        fps_counter.get_fps(),
-                        signal_chunk,
-                    )
+            # Send coupled postfactum frames + signal
+            coupled_emg_frames_queue.put(
+                (
+                    index,
+                    frames,
+                    fps_counter.get_fps(),
+                    signal_chunk,
                 )
-                index += 1
-                fps_counter.count()
+            )
+            index += 1
+            fps_counter.count()
 
         coupled_emg_frames_queue.finalize()
