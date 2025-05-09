@@ -68,7 +68,7 @@ def recording_loop(
                     stop_action = None
                     start_event = manager.Event()
                     command_channel.put(start_event)
-                    print("No hand detected. Record cancelled.")
+                    print("Hand was lost. Record cancelled.")
                 else:
                     segment_collector.add(signal_chunk, hand_angles)
 
