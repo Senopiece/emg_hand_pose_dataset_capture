@@ -126,7 +126,7 @@ class DatasetWriter:
     def __init__(self, filename: str):
         self.filename = filename
         self.archive = None
-        self.recording_index = 0
+        self.recording_index = -1
         self.C: int | None = None  # To store the number of EMG channels
 
     def __enter__(self):
