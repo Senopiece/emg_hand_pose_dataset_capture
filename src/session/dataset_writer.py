@@ -92,7 +92,9 @@ class RecordingWriter:
         if self.context.C is None:
             # Store C for metadata
             self.context.C = C
-            self.context.archive.writestr("metadata.yml", yaml.dump({"C": C}))
+            self.context.archive.writestr(
+                "metadata.yml", yaml.dump({"pose_format": "AnatomicAngles", "C": C})
+            )
 
         elif self.context.C != C:
             raise ValueError("Inconsistent number of EMG channels across recordings.")
