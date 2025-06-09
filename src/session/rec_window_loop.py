@@ -102,7 +102,6 @@ def rec_window_loop(
     def on_start():
         if hasattr(last_command, "set"):
             last_command.set()
-        start_timer()
         complete_command()
 
     def on_done():
