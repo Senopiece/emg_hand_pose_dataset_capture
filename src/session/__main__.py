@@ -3,7 +3,7 @@ import multiprocessing
 import os
 import sys
 import threading
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 import numpy as np
 
 os.environ["OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS"] = "0"
@@ -44,8 +44,16 @@ def main(
     # emg
     serial_port: str,
     channels_num: int,
+    hide_channels: Set[int],
 ):
     set_high_priority()
+
+    # Validate hide_channels
+    if not all(0 <= ch < channels_num for ch in hide_channels):
+        invalid_channels = [ch for ch in hide_channels if ch >= channels_num or ch < 0]
+        raise ValueError(
+            f"Invalid channels in hide_channels: {invalid_channels}. All channels must be in range [0, {channels_num})"
+        )
 
     # Check camera parameters
     if len(cameras_params) < 2:
@@ -115,6 +123,7 @@ def main(
             args=(
                 2,
                 channels_num,
+                hide_channels,
                 12,
                 serial_port,
                 cams_stop_event,
@@ -184,7 +193,7 @@ def main(
             target=signal_window_loop,
             args=(
                 "EMG",
-                channels_num,
+                channels_num - len(hide_channels),
                 cams_stop_event,
                 signal_chunks_queue,
             ),
@@ -311,6 +320,12 @@ if __name__ == "__main__":
         help="Number of channels the EMG device is expected to send",
     )
     parser.add_argument(
+        "--hide_channels",
+        type=lambda x: {int(i) for i in x.split(",")} if x else set(),
+        default="",
+        help="Comma-separated list of EMG channels to hide (e.g. '0,1,3')",
+    )
+    parser.add_argument(
         "--cfile",
         type=str,
         default="cameras.calib.json5",
@@ -362,5 +377,6 @@ if __name__ == "__main__":
             draw_origin_landmarks=args.origin_landmarks,
             serial_port=args.port,
             channels_num=args.channels,
+            hide_channels=args.hide_channels,
         )
     )
