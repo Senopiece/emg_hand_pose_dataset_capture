@@ -102,16 +102,19 @@ def rec_window_loop(
     def on_start():
         if hasattr(last_command, "set"):
             last_command.set()
+        start_timer()
         complete_command()
 
     def on_done():
         if hasattr(last_command, "value"):
             last_command.value = 1
+        stop_timer()
         complete_command()
 
     def on_cancel():
         if hasattr(last_command, "value"):
             last_command.value = 0
+        stop_timer()
         complete_command()
 
     POSITION_CONFIG = "rec_window_pos"
