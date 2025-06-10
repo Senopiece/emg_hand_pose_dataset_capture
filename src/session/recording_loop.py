@@ -16,7 +16,12 @@ def recording_loop(
     with DatasetWriter(filepath) as writer:
         segment_collector = HandEmgRecordingSegmentCollector()
 
-        stop_action = None  # -1 - not set, 1 - save, 0 - cancel
+        stop_action = None
+        # None: not yet started
+        # -2: not set, questioning what to do with terminated recording
+        # -1: not set, recording
+        # 1: save
+        # 0: cancel
         start_event = manager.Event()
         command_channel.put(start_event)
 
@@ -34,7 +39,7 @@ def recording_loop(
                 assert start_event is None
                 should_save = stop_action.value
 
-                if should_save == -1:
+                if should_save < 0:
                     pass  # skip if not yet decided
                 else:
                     if should_save:
@@ -44,6 +49,15 @@ def recording_loop(
                         segment_collector.reset()
                         print("Record cancelled.")
 
+                    # Drain frames that came while writing the record
+                    qsize = processing_results.qsize()
+                    if qsize > 0:
+                        print(f"Draining {qsize} frames that came while writing.")
+                        for _ in range(processing_results.qsize()):
+                            processing_results.get()
+                            processing_results.task_done()
+
+                    # Set ready to start new recording
                     stop_action = None
                     start_event = manager.Event()
                     command_channel.put(start_event)
@@ -51,7 +65,7 @@ def recording_loop(
             if start_event is not None and start_event.is_set():
                 assert stop_action is None
 
-                if hand_angles is not None:
+                if hand_angles is not None and not np.isnan(signal_chunk).any():
                     start_event = None
                     stop_action = manager.Value("b", -1)
                     command_channel.put(stop_action)
@@ -59,18 +73,23 @@ def recording_loop(
                 else:
                     start_event = manager.Event()
                     command_channel.put(start_event)
-                    print("No hand detected. Record start was ignored.")
+                    print("No hand detected or emg failure. Record start was ignored.")
 
             if start_event is None:
                 assert stop_action is not None
-                if hand_angles is None:
-                    segment_collector.reset()
-                    stop_action = None
-                    start_event = manager.Event()
-                    command_channel.put(start_event)
-                    print("Hand was lost. Record cancelled.")
-                else:
-                    segment_collector.add(signal_chunk, hand_angles)
+                assert stop_action.value < 0
+
+                # if not was questioned to save or cancel, continue collecting
+                if stop_action.value != -2:
+                    # alert if signal_chunk is having NaNs or hand was lost
+                    if hand_angles is None or np.isnan(signal_chunk).any():
+                        stop_action = manager.Value("b", -2)
+                        command_channel.put(stop_action)
+                        print(
+                            "Hand or signal was lost. Questioning recording save or cancel."
+                        )
+                    else:
+                        segment_collector.add(signal_chunk, hand_angles)
 
             signal_fwd.put((signal_chunk))
             hand_angles_fwd.put((hand_angles, coupling_fps))

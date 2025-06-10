@@ -50,7 +50,9 @@ def emg_coupling_loop(
                 signal_chunk = signal_chunk[:, keep_channels]
             except Exception as e:
                 print(">>> Error reading EMG:", e)
-                continue
+
+                # send chunk full of NaNs in case of error
+                signal_chunk = np.full((W, len(keep_channels)), np.nan)
 
             frames = []
             for frame in last_frame:
@@ -70,5 +72,9 @@ def emg_coupling_loop(
             )
             index += 1
             fps_counter.count()
+
+            if np.isnan(signal_chunk).any():
+                print(">>> EMG signal failure detected, resetting EMG device.")
+                emg_capture.position_head()
 
         coupled_emg_frames_queue.finalize()

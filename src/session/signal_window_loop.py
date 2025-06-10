@@ -74,6 +74,7 @@ def signal_window_loop(
 
     def fill_data(signal_chunk: np.ndarray):
         nonlocal data
+        signal_chunk = np.nan_to_num(signal_chunk, nan=0.0)
         for sample in signal_chunk:
             for i in range(channels_num):
                 data[i].append(sample[i] * 100)
@@ -88,15 +89,10 @@ def signal_window_loop(
             pass
 
         try:
-            if signal_queue.qsize() == 0:
+            for _ in range(max(1, signal_queue.qsize())):
                 signal_chunk: np.ndarray = signal_queue.get()
                 fill_data(signal_chunk)
                 signal_queue.task_done()
-            else:
-                for _ in range(signal_queue.qsize()):
-                    signal_chunk: np.ndarray = signal_queue.get()
-                    fill_data(signal_chunk)
-                    signal_queue.task_done()
         except EmptyFinalized:
             save_position(POSITION_CONFIG, x, y)
             break

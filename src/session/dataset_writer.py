@@ -58,6 +58,7 @@ class HandEmgRecordingSegmentCollector:
         return res
 
     def reset(self):
+        del self._bio
         self._bio = io.BytesIO()
         self._channels = None
 

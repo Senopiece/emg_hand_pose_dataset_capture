@@ -33,7 +33,10 @@ def rec_window_loop(
 
     def redraw_buttons():
         if hasattr(last_command, "value"):
-            rec_label.config(fg="red")
+            if last_command.value == -1:
+                rec_label.config(fg="red")
+            elif last_command.value == -2:
+                rec_label.config(fg="gray")
             update_buttons([("Done", on_done), ("Cancel", on_cancel)])
         else:
             rec_label.config(fg="gray")
@@ -66,7 +69,10 @@ def rec_window_loop(
         if command_updated:
             redraw_buttons()
             if hasattr(last_command, "value"):
-                start_timer()
+                if last_command.value == -1:
+                    start_timer()
+                else:
+                    stop_timer()
             else:
                 stop_timer()
         redraw_timer()
