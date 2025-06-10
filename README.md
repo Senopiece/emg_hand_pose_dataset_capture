@@ -4,7 +4,7 @@ This repo is for recording hand-motion + emg dataset
 
 > NOTE: using python 3.10
 
-[Datasets already recorded](https://disk.yandex.ru/d/cb7SKNySETBE2w)
+Datasets already recorded: [Kaggle](https://www.kaggle.com/datasets/nabuki/0-flexemg)/[Mirror](https://disk.yandex.ru/d/cb7SKNySETBE2w)
 
 ### 1. Make calibration pattern
 
