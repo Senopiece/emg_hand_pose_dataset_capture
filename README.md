@@ -31,7 +31,7 @@ at the root of the repo
 ### 4. Recording
 How to record a dataset
 1. Make sure all the hardware is ready - cameras are connected and calibrated and the emg recorder is connected
-2. Place electrodes on a hand: [example](electrode_placement.jpg), [electrodes](https://nika-medical.ru/elektrodi-dly-ekg/jelektrodi-odnorazovie/jelektrod-jekg-odnorazovij-nika-medikal-nm-26)
+2. Place electrodes on a hand: [example](fig/electrode_placement.jpg), [electrodes](https://nika-medical.ru/elektrodi-dly-ekg/jelektrodi-odnorazovie/jelektrod-jekg-odnorazovij-nika-medikal-nm-26)
 3. Install [requirements.txt](src/session/requirements.txt) into your venv or global python installation
 4. Run `export PYTHONPATH=$(pwd)/src`
 5. Run `python -m session -d datasets -p {emg_device_port}` from the repository root - this will create a new session folder inside the dataset
