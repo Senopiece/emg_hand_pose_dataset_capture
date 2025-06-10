@@ -50,7 +50,6 @@ def emg_coupling_loop(
                 signal_chunk = signal_chunk[:, keep_channels]
             except Exception as e:
                 print(">>> Error reading EMG:", e)
-                emg_capture.position_head()  # maybe reposition head to fix it
                 continue
 
             frames = []
