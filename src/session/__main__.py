@@ -79,7 +79,9 @@ def main(
     curr_dataset_id = len(os.listdir(datasets_path))
 
     # Define the current dataset file path
-    curr_dataset_filepath = os.path.join(datasets_path, str(curr_dataset_id) + ".zip")
+    curr_dataset_filepath = os.path.join(
+        datasets_path, "flex" + str(curr_dataset_id) + ".z"
+    )
     if os.path.exists(curr_dataset_filepath):
         print(f"{os.path.normpath(curr_dataset_filepath)} already exists.")
         return 1
