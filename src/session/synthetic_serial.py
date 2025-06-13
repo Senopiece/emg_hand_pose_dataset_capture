@@ -5,11 +5,12 @@ import time
 class SyntheticSerial:
     """Mock serial port for generating synthetic ADC data."""
 
-    def __init__(self):
+    def __init__(self, channels: int = 6):
         self.current_count = 0
         self.buffer = bytearray()  # Use a bytearray to store bytes
         self.buffer_lock = threading.Lock()  # Lock for thread-safe access to the buffer
-        self.channels = 6  # Example number of channels
+        self.data_available = threading.Condition(self.buffer_lock)
+        self.channels = channels  # Example number of channels
         self.running = True
 
         # Start the worker thread to add bytes to the buffer
@@ -33,6 +34,7 @@ class SyntheticSerial:
             # Add the packet bytes to the buffer (thread-safe)
             with self.buffer_lock:
                 self.buffer.extend(packets)
+                self.data_available.notify_all()
 
             # Calculate the remaining time to sleep to maintain the 1-second period
             elapsed_time = time.time() - start_time
@@ -49,12 +51,12 @@ class SyntheticSerial:
 
     def read(self, size: int = 1):
         """Read bytes from the buffer."""
-        with self.buffer_lock:
-            # Read up to `size` bytes from the buffer
-            data = self.buffer[:size]
-            # Remove the read bytes from the buffer
-            self.buffer = self.buffer[size:]
-        return bytes(data)
+        with self.data_available:
+            while len(self.buffer) < size:
+                self.data_available.wait()  # Block until enough data is available
+            result = self.buffer[:size]
+            del self.buffer[:size]
+            return result
 
     def close(self):
         """Stop the worker thread and clean up."""

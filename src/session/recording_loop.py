@@ -20,10 +20,13 @@ def recording_loop(
         # None: not yet started
         # -2: not set, questioning what to do with terminated recording
         # -1: not set, recording
-        # 1: save
-        # 0: cancel
+        # 0: save segments and start new recording
+        # 1: continue recording
         start_event = manager.Event()
         command_channel.put(start_event)
+
+        frames_recorded = 0
+        segments = []
 
         while True:
             try:
@@ -37,30 +40,56 @@ def recording_loop(
 
             if stop_action is not None:
                 assert start_event is None
-                should_save = stop_action.value
+                continue_recording = stop_action.value
 
-                if should_save < 0:
+                if continue_recording < 0:
                     pass  # skip if not yet decided
                 else:
-                    if should_save:
-                        writer.add_recording().add_segment(segment_collector.finalize())
-                        print("Record saved.")
+                    if continue_recording == 0:
+                        print("Saving to the disk...")
+
+                        # Save segment to the disk
+                        rec = writer.add_recording()
+                        rec.add_segment(segment_collector.finalize())
+                        for segment in segments:
+                            rec.add_segment(segment)
+                        segments.clear()
+
+                        # Drain frames that came while writing the segment
+                        qsize = processing_results.qsize()
+                        if qsize > 0:
+                            print(f"Draining {qsize} frames that came while writing.")
+                            for _ in range(processing_results.qsize()):
+                                processing_results.get()
+                                processing_results.task_done()
+
+                        # The time is calculated assuming 32 fps
+                        elapsed = frames_recorded / 32.0
+                        minutes, seconds = divmod(int(elapsed), 60)
+                        milliseconds = int((elapsed - int(elapsed)) * 1000)
+                        print(
+                            f"Recording {writer.recording_index} ({minutes:02}:{seconds:02}:{milliseconds:03}) saved."
+                        )
+                        frames_recorded = 0
+
+                        # Set ready to start new recording
+                        stop_action = None
+                        start_event = manager.Event()
+                        command_channel.put(start_event)
+
+                    elif hand_angles is not None and not np.isnan(signal_chunk).any():
+                        segments.append(segment_collector.finalize())
+                        start_event = None
+                        stop_action = manager.Value("b", -1)
+                        command_channel.put(stop_action)
+                        print("Continuing recording.")
+
                     else:
-                        segment_collector.reset()
-                        print("Record cancelled.")
-
-                    # Drain frames that came while writing the record
-                    qsize = processing_results.qsize()
-                    if qsize > 0:
-                        print(f"Draining {qsize} frames that came while writing.")
-                        for _ in range(processing_results.qsize()):
-                            processing_results.get()
-                            processing_results.task_done()
-
-                    # Set ready to start new recording
-                    stop_action = None
-                    start_event = manager.Event()
-                    command_channel.put(start_event)
+                        stop_action = manager.Value("b", -2)
+                        command_channel.put(stop_action)
+                        print(
+                            "No hand detected or emg failure. Record continue was ignored."
+                        )
 
             if start_event is not None and start_event.is_set():
                 assert stop_action is None
@@ -85,10 +114,9 @@ def recording_loop(
                     if hand_angles is None or np.isnan(signal_chunk).any():
                         stop_action = manager.Value("b", -2)
                         command_channel.put(stop_action)
-                        print(
-                            "Hand or signal was lost. Questioning recording save or cancel."
-                        )
+                        print("Hand or signal was lost.")
                     else:
+                        frames_recorded += 1
                         segment_collector.add(signal_chunk, hand_angles)
 
             signal_fwd.put((signal_chunk))

@@ -14,9 +14,10 @@ def rec_window_loop(
     stop_event: synchronize.Event,
     command_channel: FinalizableQueue,
 ):
+    disabled = False
     last_command = None
     start_time = None
-    last_record_time = 0
+    accumulated_recording_time = 0
 
     root = tk.Tk()
     root.title("Recording")
@@ -34,22 +35,27 @@ def rec_window_loop(
     def redraw_buttons():
         if hasattr(last_command, "value"):
             if last_command.value == -1:
-                # recording
+                # recording in progress
                 rec_label.config(fg="red")
-                update_buttons([("Done", on_done), ("Cancel", on_cancel)])
+
+                # save the latest segment, make new recording
+                update_buttons([("Save", on_finish)])
+
             elif last_command.value == -2:
                 # recording interrupted
                 rec_label.config(fg="gray")
-                update_buttons([("Save", on_done), ("Cancel", on_cancel)])
+
+                # save the latest segment, continue recording
+                update_buttons([("Save", on_finish), ("Continue", on_continue)])
         else:
             rec_label.config(fg="gray")
             update_buttons([("Start", on_start)])
 
     def redraw_timer():
+        elapsed = accumulated_recording_time
         if start_time is not None:
-            elapsed = time.time() - start_time
-        else:
-            elapsed = last_record_time
+            elapsed += time.time() - start_time
+
         minutes, seconds = divmod(int(elapsed), 60)
         milliseconds = int((elapsed - int(elapsed)) * 1000)
         timer_label.config(
@@ -58,7 +64,7 @@ def rec_window_loop(
         )
 
     def updtodate_channel():
-        nonlocal last_command
+        nonlocal last_command, disabled
         if command_channel.qsize() == 0 and command_channel.is_finalized():
             save_position(POSITION_CONFIG, root.winfo_x(), root.winfo_y())
             root.destroy()
@@ -70,6 +76,7 @@ def rec_window_loop(
             command_updated = True
 
         if command_updated:
+            disabled = False
             redraw_buttons()
             if hasattr(last_command, "value"):
                 if last_command.value == -1:
@@ -77,7 +84,7 @@ def rec_window_loop(
                 else:
                     stop_timer()
             else:
-                stop_timer()
+                reset_timer()
         redraw_timer()
 
         root.after(16, updtodate_channel)
@@ -86,15 +93,15 @@ def rec_window_loop(
         for widget in button_frame.winfo_children():
             widget.destroy()
 
-        state = "disabled" if last_command is None else "normal"
+        state = "disabled" if disabled else "normal"
         for text, command in buttons:
             btn = ttk.Button(button_frame, text=text, command=command)
             btn.config(state=state)
             btn.pack(side=tk.LEFT, padx=5)
 
     def complete_command():
-        nonlocal last_command
-        last_command = None
+        nonlocal disabled
+        disabled = True
         redraw_buttons()
         redraw_timer()
 
@@ -103,26 +110,30 @@ def rec_window_loop(
         start_time = time.time()
 
     def stop_timer():
-        nonlocal start_time, last_record_time
+        nonlocal start_time, accumulated_recording_time
         if start_time is not None:
-            last_record_time = time.time() - start_time
+            accumulated_recording_time += time.time() - start_time
             start_time = None
+
+    def reset_timer():
+        nonlocal start_time, accumulated_recording_time
+        accumulated_recording_time = 0
+        start_time = None
 
     def on_start():
         if hasattr(last_command, "set"):
             last_command.set()
         complete_command()
 
-    def on_done():
-        if hasattr(last_command, "value"):
-            last_command.value = 1
-        stop_timer()
-        complete_command()
-
-    def on_cancel():
+    def on_finish():
         if hasattr(last_command, "value"):
             last_command.value = 0
-        stop_timer()
+        reset_timer()
+        complete_command()
+
+    def on_continue():
+        if hasattr(last_command, "value"):
+            last_command.value = 1
         complete_command()
 
     POSITION_CONFIG = "rec_window_pos"

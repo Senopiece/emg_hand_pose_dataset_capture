@@ -24,7 +24,7 @@ class EmgDevice:
 
         if serial_port == "synthetic":
             # Use synthetic data generator
-            self.ser = SyntheticSerial()
+            self.ser = SyntheticSerial(channels)
             print("Starting synthetic data mode...")
         else:
             # Open real serial connection
@@ -46,7 +46,9 @@ class EmgDevice:
         # get the last packet part
         delimiter_index = incoming.rfind(self.delimiter_etalon)
         if delimiter_index == -1:
-            raise ValueError("Corrupted packet")
+            raise ValueError(
+                f"Corrupted packet {incoming}, found delimiter at {delimiter_index}"
+            )
 
         # eat up the rest of the packet so that head is at the right position
         self.ser.read(delimiter_index - self.packet_size)
