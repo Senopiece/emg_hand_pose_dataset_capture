@@ -34,10 +34,13 @@ def rec_window_loop(
     def redraw_buttons():
         if hasattr(last_command, "value"):
             if last_command.value == -1:
+                # recording
                 rec_label.config(fg="red")
+                update_buttons([("Done", on_done), ("Cancel", on_cancel)])
             elif last_command.value == -2:
+                # recording interrupted
                 rec_label.config(fg="gray")
-            update_buttons([("Done", on_done), ("Cancel", on_cancel)])
+                update_buttons([("Save", on_done), ("Cancel", on_cancel)])
         else:
             rec_label.config(fg="gray")
             update_buttons([("Start", on_start)])
