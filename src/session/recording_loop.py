@@ -50,10 +50,10 @@ def recording_loop(
 
                         # Save segment to the disk
                         rec = writer.add_recording()
-                        rec.add_segment(segment_collector.finalize())
                         for segment in segments:
                             rec.add_segment(segment)
                         segments.clear()
+                        rec.add_segment(segment_collector.finalize())
 
                         # Drain frames that came while writing the segment
                         qsize = processing_results.qsize()
@@ -98,7 +98,7 @@ def recording_loop(
                     start_event = None
                     stop_action = manager.Value("b", -1)
                     command_channel.put(stop_action)
-                    print("Recording started.")
+                    print(f"Recording {writer.recording_index + 1} started.")
                 else:
                     start_event = manager.Event()
                     command_channel.put(start_event)

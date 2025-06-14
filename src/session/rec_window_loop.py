@@ -38,8 +38,8 @@ def rec_window_loop(
                 # recording in progress
                 rec_label.config(fg="red")
 
-                # save the latest segment, make new recording
-                update_buttons([("Save", on_finish)])
+                # force goto last_command.value == -2
+                update_buttons([("Pause", on_pause)])
 
             elif last_command.value == -2:
                 # recording interrupted
@@ -130,6 +130,13 @@ def rec_window_loop(
             last_command.value = 0
         reset_timer()
         complete_command()
+
+    def on_pause():
+        if hasattr(last_command, "value"):
+            last_command.value = -2
+        stop_timer()
+        redraw_buttons()
+        redraw_timer()
 
     def on_continue():
         if hasattr(last_command, "value"):
